@@ -93,12 +93,24 @@ while(true)
     % h_current = h(rx);
 
     % Generate desired command
-    max_mag_pdot = 0.05;
+    max_mag_pdot = 0.1;
 
-    pxdot = 1*(waypoint - rpos);
-    pxdot = pxdot * min(1, max_mag_pdot/norm(pxdot));
+    pxdot_desired = 5*(waypoint - rpos);
+    N = [cos(rtheta), -l*sin(rtheta);
+         sin(rtheta),  l*cos(rtheta)];
+    pxdot = pxdot_desired * min(1, max_mag_pdot/norm(pxdot_desired));
 
     u_desired = pxdot_to_u(rx) * pxdot;
+
+    % command constraints
+    R =  robotarium.wheel_radius;
+    B =  robotarium.base_length;
+    Vm = robotarium.max_wheel_velocity;
+    u_con_A = [ 1/R, -B/(2*R);
+               -1/R,  B/(2*R);
+                1/R,  B/(2*R);
+               -1/R, -B/(2*R)];
+    u_con_b = 0.90 * Vm * ones(4,1);
 
     % Calculate cbf stuff
     cx = unsafe_circle_centers(1,1);
@@ -107,8 +119,11 @@ while(true)
 
     h_current = (rx(1) + l*cos(rtheta) - cx)^2 + (rx(2) + l*sin(rtheta) - cy)^2 - r^2;
 
-    Lgh = [2*(rx(1)+l*cos(rtheta)-cx)*cos(rtheta) + 2*(rx(2)+l*sin(rtheta)-cy)*sin(rtheta), ...
-        -2*l*(rx(1)+l*cos(rtheta)-cx)*sin(rtheta)+2*l*(rx(2)+l*sin(rtheta)-cy)*cos(rtheta)];
+    Lgh = [   2*(rx(1)+l*cos(rtheta)-cx)*cos(rtheta) + 2*(rx(2)+l*sin(rtheta)-cy)*sin(rtheta), ...
+           -2*l*(rx(1)+l*cos(rtheta)-cx)*sin(rtheta)+2*l*(rx(2)+l*sin(rtheta)-cy)*cos(rtheta)];
+
+    cbf_A = -1 * Lgh;
+    cbf_b = -1 * -2*h_current;
 
     % Weight linear and angular
     weight_linear = 100;
@@ -120,8 +135,16 @@ while(true)
     % qp_f = -2*u_desired;
     qp_H = 2*(W'*W);
     qp_f = -2*(W'*W)*u_desired;
-    qp_A = -1 * Lgh;
-    qp_b = -1 * -2*h_current;
+    % qp_H = 2*(N'*N);
+    % qp_f = -2*N'*pxdot_desired;
+    qp_A = [cbf_A; u_con_A];
+    qp_b = [cbf_b; u_con_b];
+    % qp_A = [cbf_A];
+    % qp_b = [cbf_b];
+    % qp_A = [u_con_A];
+    % qp_b = [u_con_b];
+    % qp_A = [];
+    % qp_b = [];
 
     qp_options = optimoptions("quadprog", "Display", "off");
     u = quadprog(qp_H, qp_f, qp_A, qp_b, [], [], [], [], [], qp_options);
@@ -131,7 +154,7 @@ while(true)
 
     if(~isequal(u, u_valid))
         fprintf("Slowed command from [%.2f,%.2f] to [%.2f,%.2f].\n", u(1), u(2), u_valid(1), u_valid(2));
-        error("kys command constraint violated");
+        % error("kys command constraint violated");
     end
 
     robotarium.set_velocities(1, u_valid);
@@ -146,11 +169,13 @@ while(true)
         star_patch.YData = waypoint(2) + starY;
         fprintf("Advancing waypoint!\n");
         sound(sound_laughter);
+        % sound(sound_handel);
+        % break;
     end
 
     robotarium.step();
     if(real_time)
-        pause(0.01);
+        pause(0.001);
     end
 end
 
@@ -163,7 +188,7 @@ function acceptable_command = calc_acceptable_command(robotarium, command, safet
     r = robotarium.wheel_radius;
     l = robotarium.base_length;
     wheel_velocities = [(1/(2*r))*(2*command(1, :) - l*command(2, :)); ...
-        (1/(2*r))*(2*command(1, :) + l*command(2, :))];
+                        (1/(2*r))*(2*command(1, :) + l*command(2, :))];
     max_wheel_velocity = max(abs(wheel_velocities));
     max_acceptable_wheel_velocity = robotarium.max_wheel_velocity / safety_factor;
     acceptable_command = command * min(1, max_acceptable_wheel_velocity/max_wheel_velocity);
