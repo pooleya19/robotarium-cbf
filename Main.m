@@ -123,7 +123,7 @@ while(true)
            -2*l*(rx(1)+l*cos(rtheta)-cx)*sin(rtheta)+2*l*(rx(2)+l*sin(rtheta)-cy)*cos(rtheta)];
 
     cbf_A = -1 * Lgh;
-    cbf_b = -1 * -2*h_current;
+    cbf_b = -1 * -0.5*h_current;
 
     % Weight linear and angular
     weight_linear = 100;
